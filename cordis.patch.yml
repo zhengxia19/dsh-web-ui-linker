@@ -1,0 +1,5 @@
+# Bundle patch for dsh-web-ui-linker: one composition entry, loaded on every
+# dsh boot of the profile that bundles this package.
+- insert:
+    - id: web-ui-linker
+      name: dsh-web-ui-linker

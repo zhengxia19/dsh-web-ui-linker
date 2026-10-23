@@ -1,0 +1,10 @@
+# Runtime output written by the plugin on every dsh boot.
+# web-ui-url.txt carries a live browser-auth token — never commit it.
+web-ui-url.txt
+web-ui-url.status.txt
+
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
