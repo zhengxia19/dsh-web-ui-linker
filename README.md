@@ -1,79 +1,68 @@
 # dsh-web-ui-linker
 
-A tiny [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) plugin with two jobs:
+一个小巧的 [DeepSeek Harness](https://github.com/deepseek-ai)（dsh）插件，做两件事：
 
-1. On every dsh boot, ask this instance's own `connection` service for its browser-authenticated
-   Web UI link (`connection.authenticatedUrl(cleanBaseUrl)`) and write it to a fixed file,
-   overwriting the previous one.
-2. In the **desktop app's** Web GUI, put one button at the sidebar footer (beside the settings
-   icon) that opens that live link — token included — in the **system default browser**.
+1. 每次 dsh 启动时，向本实例自己的 `connection` 服务索取浏览器认证后的 Web UI 链接
+   （`connection.authenticatedUrl(cleanBaseUrl)`），写入固定文件，覆盖上一次的内容。
+2. 在**桌面应用**的 Web GUI 里，于侧边栏底部（设置图标旁）放一个按钮，一键用**系统默认浏览器**
+   打开这个实时链接——token 已含在内。
 
-It registers exactly one route, `GET /web-ui-linker/url`, gated by `connection.admit` (browser
-authentication plus host-origin trust), and touches nothing that could restart or interrupt the
-instance.
+它只注册一条路由 `GET /web-ui-linker/url`，由 `connection.admit` 把关（浏览器认证 + 主机来源信任），
+不触碰任何可能重启或打断实例的东西。
 
-## The button (desktop shell only)
+## 按钮（仅桌面壳内）
 
-The browser half (`lib/client.js`, a hand-written module-loader bundle — no bundler needed) is
-gated to the desktop shell: `apply()` returns early unless the page runs on the shell's custom
-`dsh-app://app` origin (the same test the shell preload uses to expose `window.dshDesktop`). In a
-plain browser the Web UI *is* the page, so the bundle loads with zero side effects — no slot
-registration, no CSS, no prefetch, no probes.
+浏览器半边（`lib/client.js`，手写的模块加载器 bundle——无需打包器）门控在桌面壳内：
+页面不在壳的自定义 `dsh-app://app` origin 上时，`apply()` 直接早退（判据与壳自身 preload 暴露
+`window.dshDesktop` 所用的完全一致）。在普通浏览器里，Web UI **就是页面本身**，所以 bundle 加载后
+零副作用——不注册 slot、不注入 CSS、不预取、不发探针。
 
-Inside the desktop GUI the button registers at `sidebar.footer.action` (id `web-ui-linker`,
-`order: 120`) and stacks **vertically** with sibling footer actions (e.g. the goal-queue button)
-via a `:has`-guarded flex-column rule; in the collapsed rail it shows a centered 40×40 icon.
+桌面 GUI 内，按钮注册在 `sidebar.footer.action`（id `web-ui-linker`、`order: 120`），通过带
+`:has` 守护的 flex-column 规则与同席位的其他按钮（如任务队列按钮）**纵向堆叠**；
+折叠窄栏下显示居中的 40×40 图标。
 
-Click behaviour:
+点击行为：
 
-- The live URL is **prefetched** at mount and refreshed every 10s, so a click calls `window.open`
-  **synchronously inside the click handler's own call stack** (transient user activation visible
-  to Chromium). Only when the cache is stale (>30s) does the click fall back to the async fetch
-  path. A 1.2s cooldown keeps one physical click from emitting `window.open` twice.
-- The host recomputes the reading live, so every click carries a fresh token. The target is the
-  host-provided `http://127.0.0.1:<port>/?token=…`; the shell's `setWindowOpenHandler`
-  (http/https-only) hands it to `shell.openExternal` → your **system default browser**. No Electron
-  popup.
-- Origin rewrite safety belt: only when the *page itself* is an http(s) origin and it differs from
-  the host answer, the button rebuilds the URL on the page's own origin and keeps the token
-  (remote/proxy access). On `dsh-app:` pages the host URL is used as-is — rewriting it to
-  `dsh-app://app/?token=…` would be silently denied by the shell handler.
-- Errors (expired page cookie, service not ready) show as a red ring plus a tooltip (auto-clears
-  after 6s, button text switches to 重试); a successful click flashes a green "已请求打开" ring
-  for 2.5s. Nothing else moves.
+- 挂载时**预取**实时 URL，之后每 10s 刷新一次，因此点击会在 click 处理器**自己的调用栈内同步**
+  调用 `window.open`（Chromium 可见的 transient user activation 仍然有效）。仅当缓存过期（>30s）
+  时才回退到异步 fetch 路径。1.2s 冷却确保一次物理点击不会发出两次 `window.open`。
+- 宿主每次都实时重算读数，所以每次点击携带的都是**新鲜的 token**。打开目标是宿主给出的
+  `http://127.0.0.1:<port>/?token=…`；壳的 `setWindowOpenHandler`（只转 http/https）把它交给
+  `shell.openExternal` → 你的**系统默认浏览器**。Electron 内不会弹新窗。
+- origin 重写安全带：仅当**页面本身**是 http(s) origin 且与宿主应答的 origin 不同时，按钮才在页面
+  自身 origin 上重组 URL 并保留 token（远程/代理访问场景）。`dsh-app:` 页面上直接采用宿主给出的
+  URL——若重写成 `dsh-app://app/?token=…`，会被壳的 handler 静默拒绝。
+- 出错时（页面 cookie 过期、服务未就绪）按钮显示红色描边 + tooltip（6s 自动清除，按钮文字变为
+  「重试」）；点击成功后绿色描边「已请求打开」闪 2.5s。其余一切不动。
 
-## Diagnostics (no DevTools needed)
+## 诊断（无需 DevTools）
 
-- ~800ms after mounting, the button answers back a one-line ancestor chain plus the computed
-  `flexDirection` of the footer-actions container through `GET /web-ui-linker/url?probe=…`;
-  clicks tag requests with `?src=click`. Both land (throttled) in `web-ui-url.status.txt` as
-  `probe chain[…] dir=… kids=… page=…` and `route answered <status> src:…`.
-- Each open logs `[web-ui-linker] window.open -> <target> activation=<bool>` to the page console.
+- 挂载约 800ms 后，按钮经 `GET /web-ui-linker/url?probe=…` 回报一行祖先链 + footer-actions 容器的
+  计算后 `flexDirection`；点击请求带 `?src=click` 标签。两者（带节流）落盘到
+  `web-ui-url.status.txt`：`probe chain[…] dir=… kids=… page=…` 与 `route answered <status> src:…`。
+- 每次打开都会在页面 console 记一条 `[web-ui-linker] window.open -> <target> activation=<bool>`。
 
-## Output
+## 输出
 
-| File / route | Content |
+| 文件 / 路由 | 内容 |
 | --- | --- |
-| `web-ui-url.txt` | The authenticated URL, plus a comment with the write time, pid, and the clean origin |
-| `web-ui-url.status.txt` | Diagnostics trail, so a failure is distinguishable from an unmounted plugin |
-| `GET /web-ui-linker/url` | JSON `{url, clean, token, origin, generatedAt}`, recomputed per request, `cache-control: no-store` |
+| `web-ui-url.txt` | 认证后的 URL，附写入时间、pid、clean origin 注释 |
+| `web-ui-url.status.txt` | 诊断轨迹，可区分「插件失败」与「插件未挂载」 |
+| `GET /web-ui-linker/url` | JSON `{url, clean, token, origin, generatedAt}`，每请求实时重算，`cache-control: no-store` |
 
-Both files are runtime artifacts and are gitignored — `web-ui-url.txt` contains a live session token.
+两个文件都是运行时产物且已 gitignore——`web-ui-url.txt` 内含活动会话 token。
 
-## How it works
+## 工作原理
 
-Shipped host plugins never subscribe to a `ready` event, and the listener binds its port during
-application start rather than during plugin `apply`. So the write is driven by a plain poll loop:
-wait until `webServer.port` resolves, write the link as soon as it is available, then keep the file
-fresh for a short while in case the port changes. The HTTP route is registered immediately and
-answers `503 web-server-not-ready` until the port exists; unauthenticated local processes get `401`,
-untrusted `Host` headers get `403` — the token never leaks to a local curl without credentials.
-The host half (route + link/status files) intentionally stays active on every boot, desktop or CLI;
-only the browser half is desktop-gated.
+出厂的 host 插件从不订阅 `ready` 事件，而监听器是在 application start 阶段（而非插件 `apply` 阶段）
+绑定端口的。所以文件写出由一个普通轮询循环驱动：等 `webServer.port` 解析出来，一旦可用立刻写链接，
+随后短时间内保持文件新鲜，以防端口变化。HTTP 路由立即注册，端口就绪前回 `503 web-server-not-ready`；
+未认证的本机进程得到 `401`，不可信的 `Host` 头得到 `403`——不带凭据的本地 curl 拿不到 token。
+host 半边（路由 + 两个文件写出）有意在每次启动都保持活跃，无论桌面还是 CLI；只有浏览器半边受桌面门控。
 
-## Usage
+## 用法
 
-Bundle it into a dsh profile through its patch entry (`cordis.patch.yml`):
+通过 patch 入口（`cordis.patch.yml`）打进 dsh profile：
 
 ```json
 {
@@ -85,6 +74,7 @@ Bundle it into a dsh profile through its patch entry (`cordis.patch.yml`):
 }
 ```
 
-Requires Node.js >= 22 and dsh `>=0.2.1-rc.2 <0.2.2` (pinned: the open behaviour depends on the
-shell's `setWindowOpenHandler`). Tests: `npm test` (`node --test test/route.test.js`).
-Archived process docs live in [`docs/archive/`](<docs/archive/改造任务清单-V1.0-过程文档.md>). MIT licensed.
+要求 Node.js >= 22、dsh `>=0.2.1-rc.2 <0.2.2`（锁窗原因：打开行为依赖壳的 `setWindowOpenHandler`）。
+测试：`npm test`（`node --test test/route.test.js`）。
+过程文档归档在 [`docs/archive/`](<docs/archive/改造任务清单-V1.0-过程文档.md>)。MIT 许可。
+English version: [README_en.md](README_en.md).

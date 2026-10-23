@@ -1,68 +1,57 @@
-# Changelog
+# 更新日志
 
-## 0.2.1 — accepted, archived (2026-10-23 验收通过，定版归档)
+中文版见本文；English version: [CHANGELOG_en.md](CHANGELOG_en.md)。
 
-This is the accepted release: the desktop button opens the live token-bearing Web UI in the system
-default browser, and the browser half is gated to the desktop shell (`dsh-app://app`). Process docs
-were moved to `docs/archive/`; a source snapshot lives in `release/`.
+## 0.2.1 —— 验收通过，定版归档（2026-10-23）
 
-- Layout: the footer button now stacks **vertically** with sibling footer actions (e.g. the
-  goal-queue button) via `div[class*=_footerActions]:has(.wul-root){flex-direction:column}` —
-  the host container is a flex row by default, which squeezed both buttons horizontally.
-  The selector uses a **descendant** `:has` (not child `:has(> …)`): the slot renderer wraps
-  registered entries, so the earlier child-combinator rule never matched on the desktop app.
-- The button is compact (text-fit height, `padding:5px 10px`, line-height 1.45) and full-width,
-  sharing the host `--dsw-alias-button-tool-bar-fill` background with the queue button; the
-  collapsed rail still shows a 40×40 icon centered.
-- Click reliability: the live URL is **prefetched** at mount and refreshed every 10s, so a click
-  calls `window.open` **synchronously inside the click handler's own call stack** (transient user
-  activation visible to Chromium) instead of from an async `.then`, where the desktop shell could
-  silently drop the popup before `setWindowOpenHandler` ran. Only when the cache is stale (>30s)
-  does the click fall back to the async fetch path. A 1.2s cooldown prevents one physical click
-  from emitting `window.open` twice (observed on the desktop shell).
-- **Desktop root cause found**: the desktop GUI page runs on a custom scheme (`dsh-app://app`)
-  proxied by Electron, and the old origin rewrite turned the target into `dsh-app://app/?token=…`,
-  which the shell's `setWindowOpenHandler` (http/https-only → `shell.openExternal`) silently
-  denied. The target is now rewritten to the page origin **only when the page itself is an
-  http(s) origin**; on `dsh-app:` the host-provided `http://127.0.0.1:<port>` URL is used as-is.
-- Console diagnostics: `[web-ui-linker] window.open -> <target> activation=<bool>` logs whether
-  `navigator.userActivation.isActive` held at open time.
-- DOM probe: ~800ms after mounting, the button answers back a one-line ancestor chain plus the
-  computed `flexDirection` of the footer-actions container through
-  `GET /web-ui-linker/url?probe=…`; clicks tag requests with `?src=click`. Both land (throttled)
-  in `web-ui-url.status.txt` as `probe chain[...] dir=… kids=…` and `route answered <status>
-  src:…` — layout/click evidence without DevTools.
-- Diagnostics for click handling: the route logs throttled `route answered <status>` lines to
-  `web-ui-url.status.txt`, and the button flashes "已请求打开" (green outline, 2.5s) after a
-  successful request.
-- Desktop-only gate: `apply()` returns early unless the page runs on the shell's custom
-  `dsh-app://app` origin (the same test the shell preload uses to expose `window.dshDesktop`).
-  In a plain browser the Web UI *is* the page, so the bundle now loads with zero side effects —
-  no slot registration, no CSS, no prefetch, no probes. CSS injection moved from module scope
-  into `ensureCss()`, called only after the gate passes. The host half (route + link/status
-  files) intentionally stays active everywhere: it has no UI side effects and keeps the CLI
-  test rig usable.
-- Tests: `onServe`/`onProbe` observers covered (`src` tag passthrough; authenticated probe
-  reaches `onProbe`, rejected requests never probe) — 14 total.
+这是验收定版：桌面按钮一键用系统默认浏览器打开含实时 token 的 Web UI，浏览器半边门控在桌面壳内
+（`dsh-app://app`）。过程文档移入 `docs/archive/`；源码快照存于 `release/`。
+
+- 布局：底部按钮通过 `div[class*=_footerActions]:has(.wul-root){flex-direction:column}` 与同席位的
+  其他按钮（如任务队列按钮）**纵向堆叠**——宿主容器默认是 flex row，此前两个按钮被横向挤压。
+  选择器用的是**后代** `:has`（不是子级 `:has(> …)`）：slot 渲染器会把注册项包一层，
+  早先的子选择器规则在桌面应用上从未命中。
+- 按钮紧凑（高度随文字、`padding:5px 10px`、line-height 1.45）且全宽，与队列按钮共用宿主
+  `--dsw-alias-button-tool-bar-fill` 底色；折叠窄栏仍显示居中的 40×40 图标。
+- 点击可靠性：挂载时**预取**实时 URL、每 10s 刷新，使点击在 click 处理器**自己的调用栈内同步**
+  调用 `window.open`（Chromium 可见的 transient user activation），而不是在异步 `.then` 里调用——
+  后者会在 `setWindowOpenHandler` 执行前就被桌面壳静默吞掉弹窗。仅当缓存过期（>30s）时才回退到
+  异步 fetch 路径。1.2s 冷却防止一次物理点击发出两次 `window.open`（桌面壳上实测出现过）。
+- **桌面端根因确诊**：桌面 GUI 页面跑在 Electron 代理的自定义协议（`dsh-app://app`）上，旧的
+  origin 重写把目标改成了 `dsh-app://app/?token=…`，而壳的 `setWindowOpenHandler`
+  （只转 http/https → `shell.openExternal`）会静默拒绝。现在**仅当页面本身是 http(s) origin**
+  时才重写到页面 origin；`dsh-app:` 页面直接采用宿主给出的 `http://127.0.0.1:<port>` URL。
+- Console 诊断：`[web-ui-linker] window.open -> <target> activation=<bool>`
+  记录打开时 `navigator.userActivation.isActive` 是否为真。
+- DOM 探针：挂载约 800ms 后，按钮经 `GET /web-ui-linker/url?probe=…` 回报一行祖先链 +
+  footer-actions 容器的计算后 `flexDirection`；点击请求带 `?src=click` 标签。两者（带节流）落盘到
+  `web-ui-url.status.txt`：`probe chain[...] dir=… kids=…` 与 `route answered <status> src:…`
+  ——无需 DevTools 的布局/点击证据。
+- 点击处理诊断：路由向 `web-ui-url.status.txt` 写节流的 `route answered <status>` 行，
+  按钮在请求成功后闪绿色描边「已请求打开」（2.5s）。
+- 桌面专用门控：页面不在壳的自定义 `dsh-app://app` origin 上时 `apply()` 直接早退
+  （判据与壳 preload 暴露 `window.dshDesktop` 所用的相同）。在普通浏览器里 Web UI *就是页面本身*，
+  所以 bundle 现在加载后零副作用——不注册 slot、不注入 CSS、不预取、不发探针。CSS 注入从模块顶层
+  挪入 `ensureCss()`，仅门控通过后调用。host 半边（路由 + 链接/状态文件）有意在所有环境保持活跃：
+  它没有 UI 副作用，还能让 CLI 工装继续可用。
+- 测试：覆盖 `onServe`/`onProbe` 观察者（`src` 标签透传；已鉴权探针抵达 `onProbe`，
+  被拒请求绝不探针）——共 14 例。
 
 ## 0.2.0
 
-- New browser half: a sidebar-footer button (`sidebar.footer.action`, id `web-ui-linker`) in the
-  Web GUI. One click opens the live token-bearing Web UI URL in the **system default browser**
-  (inside the desktop app this is `shell.openExternal`; in a real browser it is a new tab).
-- New host route `GET /web-ui-linker/url`: returns
-  `{url, clean, token, origin, generatedAt}` recomputed on every request, `cache-control: no-store`,
-  gated by `connection.admit` (401 unauthenticated, 403 untrusted Host, 405 non-GET/HEAD,
-  503 before the web listener binds).
-- Remote/proxy access: when the host answer carries a different origin than the page, the button
-  rebuilds the URL on the page's own origin and keeps the token.
-- `package.json` now exports `./client` and declares the `dsh.client` bundle entry
-  (platform `web`, inject `@deepseek-ai/dsh-client-runtime`); engines pin `dsh >=0.2.1-rc.2 <0.2.2`.
-- File-writing behavior (`web-ui-url.txt`, `web-ui-url.status.txt`) is unchanged.
-- Tests: `node --test test/route.test.js` covers the route's auth/method/status paths.
+- 新增浏览器半边：Web GUI 侧边栏底部按钮（`sidebar.footer.action`，id `web-ui-linker`）。
+  一键在**系统默认浏览器**打开含实时 token 的 Web UI URL（桌面应用内即 `shell.openExternal`；
+  真实浏览器里是新标签页）。
+- 新增 host 路由 `GET /web-ui-linker/url`：每请求实时重算并返回
+  `{url, clean, token, origin, generatedAt}`，`cache-control: no-store`，由 `connection.admit`
+  把关（未认证 401、不可信 Host 403、非 GET/HEAD 405、web 监听未绑定前 503）。
+- 远程/代理访问：宿主应答的 origin 与页面不一致时，按钮在页面自身 origin 上重组 URL 并保留 token。
+- `package.json` 新增 `./client` 导出并声明 `dsh.client` bundle 入口（platform `web`，
+  inject `@deepseek-ai/dsh-client-runtime`）；engines 锁 `dsh >=0.2.1-rc.2 <0.2.2`。
+- 文件写出行为（`web-ui-url.txt`、`web-ui-url.status.txt`）保持不变。
+- 测试：`node --test test/route.test.js` 覆盖路由的鉴权/方法/状态路径。
 
 ## 0.1.0
 
-- Initial release: writes the live browser-authenticated Web UI link
-  (`connection.authenticatedUrl`) to `web-ui-url.txt` once per boot, with a diagnostics trail in
-  `web-ui-url.status.txt`.
+- 首发：每次启动把实时浏览器认证后的 Web UI 链接（`connection.authenticatedUrl`）写入
+  `web-ui-url.txt`，并在 `web-ui-url.status.txt` 留下诊断轨迹。
