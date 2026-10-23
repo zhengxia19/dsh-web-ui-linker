@@ -1,15 +1,17 @@
 {
   "name": "dsh-web-ui-linker",
-  "version": "0.1.0",
-  "description": "Writes the live browser-authenticated Web UI link (connection.authenticatedUrl) to a fixed file once per dsh boot, overwriting the previous one",
+  "version": "0.2.1",
+  "description": "Writes the live browser-authenticated Web UI link (connection.authenticatedUrl) to a fixed file once per dsh boot, and adds a sidebar-footer button in the Web GUI that opens that link in the system default browser",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.2.2"
   },
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -20,6 +22,16 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
     }
+  },
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js",
+    "test": "node --test test/route.test.js"
   }
 }

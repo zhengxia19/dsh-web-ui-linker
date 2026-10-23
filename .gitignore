@@ -5,6 +5,7 @@ web-ui-url.status.txt
 
 node_modules/
 dist/
+release/
 *.log
 .DS_Store
 Thumbs.db
