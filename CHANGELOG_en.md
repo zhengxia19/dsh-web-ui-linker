@@ -2,6 +2,24 @@
 
 # Changelog
 
+## Unreleased
+
+- Fix startup latency by removing about 60 seconds of port polling and keep-alive waits from
+  host `apply()`. Write the link once after dependencies are ready and again on reactivation;
+  file-write failures do not block startup. Browser prefetch, refresh and click behaviour stay unchanged.
+- Add regression coverage for startup without polling, reactivation, diagnostics and route disposal;
+  correct the documented service startup order.
+- Verified on 2026-10-25: all 18 tests and syntax checks passed. A local restart without debugger
+  flags showed the window in 5.04 seconds, down from 65.38 seconds before the fix. Link-file and
+  route checks passed (401 unauthenticated, 200 authenticated); browser opening was not retested.
+- The button now mirrors ds-bot's sidebar-footer button (`.bt-return`) pill look: transparent
+  fill, no border, `border-radius:999px`, 36px tall, 14px/20px text, gray hover wash
+  (`rgba(127,127,127,.14)`), `scale(.96)` on press. ds-bot's own avatar mark is not copied —
+  the plugin's icon and text stay unchanged. The collapsed-rail icon button shrinks from
+  40×40 to a 36×36 circle accordingly.
+- Error/success feedback switches from ring recoloring to **text tinting** (red/green), since
+  the new look has no border to recolor.
+
 ## 0.2.1 — accepted, archived (accepted 2026-10-23, frozen release)
 
 This is the accepted release: the desktop button opens the live token-bearing Web UI in the system

@@ -24,7 +24,10 @@ registration, no CSS, no prefetch, no probes.
 
 Inside the desktop GUI the button registers at `sidebar.footer.action` (id `web-ui-linker`,
 `order: 120`) and stacks **vertically** with sibling footer actions (e.g. the goal-queue button)
-via a `:has`-guarded flex-column rule; in the collapsed rail it shows a centered 40×40 icon.
+via a `:has`-guarded flex-column rule; in the collapsed rail it shows a centered 36×36 round
+icon button. Its look mirrors ds-bot's sidebar-footer button (`.bt-return`): borderless pill,
+transparent fill, `border-radius:999px`, 36px tall, 14px/20px text, gray wash on hover,
+`scale(.96)` on press — without ds-bot's own avatar mark; only this plugin's icon and text stay.
 
 Click behaviour:
 
@@ -40,9 +43,9 @@ Click behaviour:
   the host answer, the button rebuilds the URL on the page's own origin and keeps the token
   (remote/proxy access). On `dsh-app:` pages the host URL is used as-is — rewriting it to
   `dsh-app://app/?token=…` would be silently denied by the shell handler.
-- Errors (expired page cookie, service not ready) show as a red ring plus a tooltip (auto-clears
-  after 6s, button text switches to 重试 ("retry")); a successful click flashes a green
-  "已请求打开" ("open requested") ring for 2.5s. Nothing else moves.
+- Errors (expired page cookie, service not ready) show as red text plus a tooltip (auto-clears
+  after 6s, button text switches to 重试 ("retry")); a successful click flashes "已请求打开"
+  ("open requested") in green text for 2.5s. Nothing else moves.
 
 ## Diagnostics (no DevTools needed)
 
@@ -64,14 +67,23 @@ Both files are runtime artifacts and are gitignored — `web-ui-url.txt` contain
 
 ## How it works
 
-Shipped host plugins never subscribe to a `ready` event, and the listener binds its port during
-application start rather than during plugin `apply`. So the write is driven by a plain poll loop:
-wait until `webServer.port` resolves, write the link as soon as it is available, then keep the file
-fresh for a short while in case the port changes. The HTTP route is registered immediately and
-answers `503 web-server-not-ready` until the port exists; unauthenticated local processes get `401`,
+The plugin injects `connection` and `webServer`. In the installed host, WebServer initialization
+awaits its bound port, and Cordis activates dependent plugins once their services are ready.
+`apply()` registers the route, generates and writes the authenticated link once, then returns
+immediately. The host half has no polling or keep-alive timers. A dependency reload reactivates
+the plugin and updates the file. The launch token stays stable within the application root
+context; the HTTP route still computes the link from the current services on every request.
+File-write failures or an unexpectedly missing port are diagnosed without retrying or delaying
+startup. The route remains registered and returns `503 web-server-not-ready` if the port is absent.
+Unauthenticated local processes get `401`,
 untrusted `Host` headers get `403` — the token never leaks to a local curl without credentials.
 The host half (route + link/status files) intentionally stays active on every boot, desktop or CLI;
 only the browser half is desktop-gated.
+
+The browser's initial prefetch, 10-second refresh and 30-second cache lifetime are unchanged,
+preserving synchronous browser opening from clicks without holding up host startup. The removed
+host loop used to wait about 60 seconds even after writing the link, delaying Host readiness and
+the desktop window.
 
 ## Usage
 
@@ -88,6 +100,8 @@ Bundle it into a dsh profile through its patch entry (`cordis.patch.yml`):
 ```
 
 Requires Node.js >= 22 and dsh `>=0.2.1-rc.2 <0.2.2` (pinned: the open behaviour depends on the
-shell's `setWindowOpenHandler`). Tests: `npm test` (`node --test test/route.test.js`).
+shell's `setWindowOpenHandler`). Tests: `npm test`, covering routes, startup without polling,
+reactivation, failure diagnostics and route disposal. Tests create link/status files; run them
+in a temporary copy while a real instance is running to preserve its diagnostic files.
 Archived process docs live in [`docs/archive/`](<docs/archive/改造任务清单-V1.0-过程文档.md>)
 (Chinese). MIT licensed.
